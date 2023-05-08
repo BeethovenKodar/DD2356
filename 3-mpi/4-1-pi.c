@@ -1,63 +1,43 @@
 
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
 #include <math.h>
 #include <time.h>
-#include <mpi.h>
 
-#define FLIPS 100000000
+#define FLIPS 1E8 // 10^9 on dardel
 
 int main(int argc, char *argv[]) {
     int count = 0, rank, comm_size, provided;
-    double x, y, z;
+    double x, y, z, start_time, end_time;
 
     MPI_Init_thread(&argc, &argv, MPI_THREAD_SINGLE, &provided);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &comm_size);
 
-    printf("I'm %d\n", rank);
+    srand(time(NULL) + rank * 12345678);
 
-    double seed = time(NULL) + 12345678 + rank * 10000
-    srand(seed);
-    printf("Proc %d seed: %d\n", rank, seed);
+    if (rank == 0)
+        start_time = MPI_Wtime();
 
     for (int i = 0; i < FLIPS/comm_size; i++) {
-        // Generate random (X,Y) points
-        x = (double)random() / (double)RAND_MAX;
-        y = (double)random() / (double)RAND_MAX;
-        z = sqrt((x*x) + (y*y));
+        x = (double)rand() / (double)RAND_MAX;
+        y = (double)rand() / (double)RAND_MAX;
         
-        // Check if point is in unit circle
-        if (z <= 1.0)
+        // check if "hypotenuse" is inside unit circle
+        if (sqrt((x*x) + (y*y)) <= 1.0)
             count++;
     }
 
-    printf("Proc %d counted %d\n", rank, count);
-
     int all_count = 0;
-    MPI_Reduce(&count,
-            &all_count,
-            1,
-            MPI_DOUBLE,
-            MPI_SUM,
-            0,
-            MPI_COMM_WORLD);
-
-    // wait for all processes to finish
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Reduce(&count, &all_count, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
-        if (all_count < 0) {
-            printf("Overflow?\n");
-            MPI_Finalize();
-            return 1;
-        }
+        double pi = 4.0 * ((double)all_count / (double)FLIPS);
 
-        // Estimate Pi and display the result
-        double pi = comm_size * 4.0 * ((double)all_count / (double)FLIPS);
-        printf("Pi is approximated to: %f\n%d processes\n", pi, comm_size);
+        end_time = MPI_Wtime();
+        printf("time(%d): %3fs\n", comm_size, end_time - start_time);
+        printf("pi ≈ %f\n", pi);
     }
 
     MPI_Finalize();
